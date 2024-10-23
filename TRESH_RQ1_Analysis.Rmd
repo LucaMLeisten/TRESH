@@ -1,0 +1,891 @@
+---
+title: "TRESH_RQ1_Analysis"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    theme: spacelab
+fontsize: 16pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages
+```{r Load Packages, message=TRUE, warning=TRUE}
+# load packages
+install.packages("pacman", repos = "http://cran.us.r-project.org")
+library(pacman)
+p_load(tidyverse, ggridges, ggplot2, patchwork, rstatix, reshape2, ggdist, easystats, ordinal, lme4, apaTables, car, robustlmm)
+
+options(scipen=30000)
+```
+
+## Load Data
+```{r Load Data, echo=TRUE}
+# load in datafiles
+
+df_survey <- read.csv("dataframes/softbots_study1.csv", header=TRUE)
+# remove added x column
+df_survey <- df_survey[-1]
+
+df_unique <- read.csv("dataframes/df_unique.csv", header=TRUE)
+# remove added x column
+df_unique <- df_unique[-1]
+```
+
+## Variable transformation
+```{r}
+# Bring variables into right format
+
+# factors
+df_survey <- df_survey %>%
+  mutate(across(c(ParticipantID, consent, gender, country, teach.school, robot, robot_type, starts_with("rank"),starts_with("suit"),starts_with("favorite"), attentioncheck1, attentioncheck2, source, videos.amount, movies.amount, robots.skepticism), as.factor))
+
+# numeric
+df_survey <- df_survey %>%
+  mutate(across(c(starts_with("prior"), teach.age_1, teach.age_2,teach.age_3,teach.age_4,teach.age_5,teach.age_6,teach.subject_1,teach.subject_2,teach.subject_3,teach.subject_4,teach.subject_5,teach.subject_6,teach.subject_7,teach.subject_8,teach.subject_9,teach.subject_10, Views, Viewssuit, totalviews),as.numeric
+  ))
+```
+
+# Correlations
+```{r}
+df_cor <- df_survey[,c(7,81:96,110:113)]
+
+# rename variables
+df_cor <- df_cor %>%
+  dplyr::rename(
+    "Age" = age,
+    "Familiarity to robot" = familiarrobot,
+    "Familiarity to objects" = familiarobjec,
+    "Safety" = safety,
+    "Competence" = competence,
+    "Comfortable around" = comfortable,
+    "Friendliness" = friendliness,
+    "Creepy/Cute" = creepycute,
+    "Bad/Good" = badgood,
+    "Physical warmth" = physicalwarm,
+    "Social warmth" = socialwarm,
+    "Human-like form" = humanform,
+    "Human-like motion" = humanmotion,
+    "Social competence" = socialcompetence,
+    "Socialness" = socialness,
+    "Social intelligence" = socialintelligence,
+    "Intelligence" = intelligence,
+    "Suitability math" = suitmath,
+    "Suitability diff. task" = suitdifftask,
+    "Suitability reading" = suitread,
+    "Suitability art" = suitart
+  )
+
+#create table
+apa.cor.table(df_cor, filename="Tables/Dimensions_correlations.doc", table.number=1)
+```
+
+# Means
+```{r}
+# hard coded as 1, soft as 2
+
+# reshape to long
+df_long_dimensions <- tidyr::pivot_longer(df_survey, cols = c("familiarrobot","familiarobjec","safety","competence","comfortable","friendliness","creepycute","badgood","physicalwarm","socialwarm","humanform","humanmotion","socialcompetence","socialness","socialintelligence","intelligence"), names_to = "dimension", values_to = "value")
+```
+
+## Means per dimension
+```{r}
+# calculate means per dimension 
+df_unique%>%
+  get_summary_stats(c(badgood,comfortable,competence,creepycute,familiarobjec,familiarrobot,friendliness,humanform,humanmotion,intelligence,physicalwarm,safety,socialcompetence,socialintelligence,socialness,socialwarm), type = "mean_sd")
+```
+
+## Means per robot type
+```{r}
+# means per dimension and robot type
+means_robottype <- df_survey%>%
+  group_by(robot_type) %>%
+  get_summary_stats(c(badgood,comfortable,competence,creepycute,familiarobjec,familiarrobot,friendliness,humanform,humanmotion,intelligence,physicalwarm,safety,socialcompetence,socialintelligence,socialness,socialwarm), type = "mean_sd")
+
+means_robottype
+```
+
+## Means per robot
+```{r}
+# means per dimension per robot
+means_robot <- df_long_dimensions %>%
+  group_by(robot, dimension) %>%
+  get_summary_stats(value, type = "mean_sd")
+
+means_robot
+```
+
+# LMERs
+```{r}
+# set sum-to-zero contrasts
+contrasts(df_survey$robot_type) <- contr.sum 
+contrasts(df_survey$robot_type)
+```
+
+## Bad/good
+```{r LMER_badgood}
+# run lmer
+model_badgood <- lmer(badgood ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+# print results
+summary(model_badgood)
+
+# calculate cCIs
+confint(model_badgood, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_badgood)
+res_model_badgood <- residuals(model_badgood)
+qqPlot(res_model_badgood)
+```
+## Comfortable 
+```{r LMER_comfortable}
+model_comfortable<- lmer(comfortable ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_comfortable)
+confint(model_comfortable, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_comfortable)
+res_model_comfortable <- residuals(model_comfortable)
+qqPlot(res_model_comfortable)
+```
+
+## Competence
+```{r LMER_competence}
+model_competence<- lmer(competence ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_competence)
+confint(model_competence, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_competence)
+
+res_model_competence <- residuals(model_competence)
+qqPlot(res_model_competence)
+```
+
+## Creepy/Cute
+```{r LMER_creepycute, warning=FALSE}
+model_creepycute<- lmer(creepycute ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_creepycute)
+confint(model_creepycute, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_creepycute)
+
+res_model_creepycute <- residuals(model_creepycute)
+qqPlot(res_model_creepycute)
+```
+
+## Familiarity objects
+```{r LMER_familiarityobject}
+model_familiarobj<- lmer(familiarobjec ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_familiarobj)
+confint(model_familiarobj, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_familiarobj)
+
+res_model_familiarobj <- residuals(model_familiarobj)
+qqPlot(res_model_familiarobj)
+```
+
+## Familiarity robots
+```{r LMER_familiarityrobots}
+model_familiarrobo<- lmer(familiarrobot ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_familiarrobo)
+confint(model_familiarrobo, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_familiarrobo)
+
+res_model_familiarrobo <- residuals(model_familiarrobo)
+qqPlot(res_model_familiarrobo) # slight deviation
+
+# robust lmer
+model_familiarrobo_robust <- rlmer(familiarrobot ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_familiarrobo_robust)
+
+# calculate Wald confidence interval, since assumptins are violated, https://gist.github.com/kamermanpr/aaa598485b6e990017375359ff5f4533
+confint.rlmerMod <- function(object, level = 0.95) {
+  
+  # Extract beta coefficients
+  beta <- fixef(object)
+  
+  # Extract names of coefficients
+  parm <- names(beta)
+  
+  # Extract standard errors for the coefficients
+  se <- sqrt(diag(vcov(object)))
+  
+  # Set level of confidence interval
+  z <- qnorm((1 + level) / 2)
+  
+  # Calculate CI
+  ctab <- cbind(beta - (z * se), 
+                beta + (z * se))
+  
+  # label column names
+  colnames(ctab) <- c(paste(100 * ((1 - level) / 2), '%'),
+                      paste(100 * ((1 + level) / 2), '%'))
+  
+  # Output
+  return(ctab[parm, ])
+}
+
+confint.rlmerMod(model_familiarrobo_robust) 
+
+check_model(model_familiarrobo_robust)
+```
+
+## Friendliness
+```{r LMER_friendliness}
+model_friendliness<- lmer(friendliness ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_friendliness)
+confint(model_friendliness, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_friendliness)
+
+res_model_friendliness <- residuals(model_friendliness)
+qqPlot(res_model_friendliness)
+```
+
+## Human-like form
+```{r LMER_humanform}
+model_humanform<- lmer(humanform ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_humanform)
+confint(model_humanform, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_humanform)
+
+res_model_humanform <- residuals(model_humanform)
+qqPlot(res_model_humanform)
+```
+## Human-like motion
+```{r LMER_humanmotion}
+model_humanmotion<- lmer(humanmotion ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_humanmotion)
+confint(model_humanmotion, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_humanmotion)
+
+res_model_humanmotion <- residuals(model_humanmotion)
+qqPlot(res_model_humanmotion)
+```
+
+## Intelligence
+```{r LMER_intelligence}
+model_intelligence<- lmer(intelligence ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_intelligence)
+confint(model_intelligence, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_intelligence)
+
+res_model_intelligence <- residuals(model_intelligence)
+qqPlot(res_model_intelligence)
+```
+## Physical warmth
+```{r LMER_physicalwarmth}
+model_physicalwarm<- lmer(physicalwarm ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_physicalwarm)
+confint(model_physicalwarm, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_physicalwarm)
+
+res_model_physicalwarm <- residuals(model_physicalwarm)
+qqPlot(res_model_physicalwarm)
+```
+
+## Safety
+```{r LMER_safety}
+model_safety<- lmer(safety ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_safety)
+confint(model_safety, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_safety)
+
+res_model_safety <- residuals(model_safety)
+qqPlot(res_model_safety)
+```
+
+## Social competence
+```{r LMER_socialcompetence}
+model_socialcompetence<- lmer(socialcompetence ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_socialcompetence)
+confint(model_socialcompetence, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_socialcompetence)
+
+res_model_socialcompetence <- residuals(model_socialcompetence)
+qqPlot(res_model_socialcompetence)
+```
+
+## Social intelligence
+```{r LMER_socialintelligence}
+model_socialintelligence<- lmer(socialintelligence ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_socialintelligence)
+confint(model_socialintelligence, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_socialintelligence)
+
+res_model_socialintelligence <- residuals(model_socialintelligence)
+qqPlot(res_model_socialintelligence)
+```
+
+## Socialness
+```{r LMER_socialness}
+model_socialness<- lmer(socialness ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_socialness)
+confint(model_socialness, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_socialness)
+
+res_model_social <- residuals(model_socialness)
+qqPlot(res_model_social)
+```
+
+## Social warmth
+```{r LMER_socialwarmth}
+model_socialwarm<- lmer(socialwarm ~ robot_type + (1 + robot_type | ParticipantID) + (1|robot), data = df_survey)
+
+summary(model_socialwarm)
+confint(model_socialwarm, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_socialwarm)
+
+res_model_socialwarm <- residuals(model_socialwarm)
+qqPlot(res_model_socialwarm)
+```
+
+# CLMMs
+## Bad/good
+```{r}
+model_clmm_badgood <- clmm(rankbadgood ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_badgood)
+
+# profile CI
+confint(model_clmm_badgood, level=0.95, type=profile)
+```
+
+## Comfortable
+```{r}
+model_clmm_comfortable <- clmm(rankcomfortable ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_comfortable)
+
+# profile CI
+confint(model_clmm_comfortable, level=0.95, type=profile)
+```
+
+## Competence
+```{r}
+model_clmm_competence <- clmm(rankcompetence ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_competence)
+
+# profile CI
+confint(model_clmm_competence, level=0.95, type=profile)
+```
+
+## Creepy/Cute
+```{r}
+model_clmm_creepycute <- clmm(rankcreepycute ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_creepycute)
+
+# profile CI
+confint(model_clmm_creepycute, level=0.95, type=profile)
+```
+
+## Friendliness
+```{r}
+model_clmm_friendliness <- clmm(rankfriendliness ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_friendliness)
+
+# profile CI
+confint(model_clmm_friendliness, level=0.95, type=profile)
+```
+
+## Human-like form
+```{r}
+model_clmm_humanform <- clmm(rankhumanform ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_humanform) 
+
+# profile CI
+confint(model_clmm_humanform, level=0.95, type=profile)
+```
+
+## Intelligence
+```{r}
+model_clmm_intelligence <- clmm(rankintelligence ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_intelligence)
+
+# profile CI
+confint(model_clmm_intelligence, level=0.95, type=profile)
+```
+
+## Physical warmth
+```{r}
+model_clmm_physicalwarm <- clmm(rankphysicalwarmth ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_physicalwarm)
+
+# profile CI
+confint(model_clmm_physicalwarm, level=0.95, type=profile)
+```
+
+## Safety
+```{r}
+model_clmm_safety <- clmm(ranksafety ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_safety)
+
+# profile CI
+confint(model_clmm_safety, level=0.95, type=profile)
+```
+
+## Social competence
+```{r}
+model_clmm_socialcomp <- clmm(ranksocialcompetence ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_socialcomp)
+
+# profile CI
+confint(model_clmm_socialcomp, level=0.95, type=profile)
+```
+
+## Social intelligence
+```{r}
+model_clmm_socialint <- clmm(ranksocialintelligence ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_socialint)
+
+# profile CI
+confint(model_clmm_socialint, level=0.95, type=profile)
+```
+
+## Socialness
+```{r}
+model_clmm_socialness <- clmm(ranksocial ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_socialness)
+
+# profile CI
+confint(model_clmm_socialness, level=0.95, type=profile)
+```
+
+## Social warmth
+```{r}
+model_clmm_socialwarm <- clmm(ranksocialwarmth ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_clmm_socialwarm)
+
+# profile CI
+confint(model_clmm_socialwarm, level=0.95, type=profile)
+```
+
+# GLMERs
+```{r}
+# create new rank variable with 1 for being ranked 1st and 0 for not being ranked first
+
+df_survey <- df_survey %>%
+  mutate(rank_glmer_goodbad = dplyr::case_when(
+                                        rankbadgood == "1" ~ "1", 
+                                        rankbadgood != "1" ~ "0", 
+                                       ),
+         rank_glmer_comfortable = dplyr::case_when(
+                                        rankcomfortable == "1" ~ "1", 
+                                        rankcomfortable != "1" ~ "0", 
+                                       ),
+         rank_glmer_competence = dplyr::case_when(
+                                        rankcompetence == "1" ~ "1", 
+                                        rankcompetence != "1" ~ "0",),
+         rank_glmer_creepycute = dplyr::case_when(
+                                        rankcreepycute == "1" ~ "1", 
+                                        rankcreepycute != "1" ~ "0", 
+                                       ),
+         rank_glmer_friendliness = dplyr::case_when(
+                                        rankfriendliness == "1" ~ "1", 
+                                        rankfriendliness != "1" ~ "0", 
+                                       ),
+         rank_glmer_humanform = dplyr::case_when(
+                                        rankhumanform == "1" ~ "1", 
+                                        rankhumanform != "1" ~ "0", 
+                                       ),
+         rank_glmer_intelligence = dplyr::case_when(
+                                        rankintelligence == "1" ~ "1", 
+                                        rankintelligence != "1" ~ "0", 
+                                       ),
+         rank_glmer_physicalwarm = dplyr::case_when(
+                                        rankphysicalwarmth == "1" ~ "1", 
+                                        rankphysicalwarmth != "1" ~ "0", 
+                                       ),
+         rank_glmer_safety = dplyr::case_when(
+                                        ranksafety == "1" ~ "1", 
+                                        ranksafety != "1" ~ "0", 
+                                       ),
+         rank_glmer_socialcompetence = dplyr::case_when(
+                                        ranksocialcompetence == "1" ~ "1", 
+                                        ranksocialcompetence != "1" ~ "0", 
+                                       ),
+         rank_glmer_socialintelligence = dplyr::case_when(
+                                        ranksocialintelligence == "1" ~ "1", 
+                                        ranksocialintelligence != "1" ~ "0", 
+                                       ),
+         rank_glmer_social= dplyr::case_when(
+                                        ranksocial == "1" ~ "1", 
+                                        ranksocial != "1" ~ "0", 
+                                       ),
+         rank_glmer_socialwarmth = dplyr::case_when(
+                                        ranksocialwarmth == "1" ~ "1", 
+                                        ranksocialwarmth != "1" ~ "0", 
+                                       )
+         )
+
+# turn into numeric
+df_survey <- df_survey %>%
+  mutate(across(c(starts_with("rank_glmer")),as.numeric
+  ))
+```
+
+## Bad/Good
+```{r}
+model_glmer_badgood1 <- glmer(rank_glmer_goodbad ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# singularity warning, so use maximal complex random intercepts instead
+model_glmer_badgood2 <- glmer(rank_glmer_goodbad ~ robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# still warning, reduce
+model_glmer_badgood3 <- glmer(rank_glmer_goodbad ~ robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# still warning, use allFit command
+model_allfit1 <- allFit(model_glmer_badgood1) # all issue warnings
+### save summary in new object
+summ_allfit1 <- summary(model_allfit1) 
+### look at fixed estimates
+summ_allfit1$fixef # differences relatively small
+### look at random effect
+summ_allfit1$sdcor # differences small
+### check log likelihood
+summ_allfit1$llik
+### check whether all model ran
+summ_allfit1$which.OK # all ran
+
+# use bobyqa
+model_glmer_badgood_bobyqa <- glmer(rank_glmer_goodbad ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"), control = glmerControl(optimizer="bobyqa")) # no singularity warning anymore
+
+summary(model_glmer_badgood_bobyqa) # not significant
+
+# wald CI
+confint(model_glmer_badgood_bobyqa,parm="beta_",method="Wald")
+```
+
+## Competence
+```{r}
+model_glmer_competence1 <- glmer(rank_glmer_competence ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# singularity warning, so use maximal complex random intercepts instead
+model_glmer_competence2 <- glmer(rank_glmer_competence ~ robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# still warning, reduce
+model_glmer_competence3 <- glmer(rank_glmer_competence ~ robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# allfit command
+model_allfit_comp1 <- allFit(model_glmer_competence1)
+### save summary in new object
+summ_allfit_comp1 <- summary(model_allfit_comp1) 
+### look at fixed estimates
+summ_allfit_comp1$fixef # differences relatively small
+### look at random effect
+summ_allfit_comp1$sdcor # differences small
+### check log likelihood
+summ_allfit_comp1$llik # differences small
+### check whether all model ran
+summ_allfit_comp1$which.OK # all ran 
+# -> continue with singularity warning
+
+summary(model_glmer_competence1) # significant
+
+# wald CI
+confint(model_glmer_competence1,parm="beta_",method="Wald")
+```
+
+## Comfortable
+```{r}
+model_glmer_comfortable1 <- glmer(rank_glmer_comfortable ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# singularity warning, so use maximal complex random intercepts instead
+model_glmer_comfortable2 <- glmer(rank_glmer_comfortable ~ robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# still warning, reduce
+model_glmer_comfortable3 <- glmer(rank_glmer_comfortable ~ robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# allfit command
+model_allfit_comf1 <- allFit(model_glmer_comfortable1)
+### save summary in new object
+summ_allfit_comf1 <- summary(model_allfit_comf1) 
+### look at fixed estimates
+summ_allfit_comf1$fixef # differences relatively small
+### look at random effect
+summ_allfit_comf1$sdcor # differences small
+### check log likelihood
+summ_allfit_comf1$llik # differences small
+### check whether all model ran
+summ_allfit_comf1$which.OK # all ran 
+# -> continue with singularity warning
+
+summary(model_glmer_comfortable1) # not significant
+
+# wald CI
+confint(model_glmer_comfortable1,parm="beta_",method="Wald")
+```
+
+## Friendliness
+```{r}
+# rank_glmer_friendliness
+model_glmer_friendliness <- glmer(rank_glmer_friendliness ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+summary(model_glmer_friendliness)
+
+# wald CI
+confint(model_glmer_friendliness,parm="beta_",method="Wald")
+```
+
+## Human-like form
+```{r}
+# rank_glmer_humanform
+model_glmer_humanform1 <- glmer(rank_glmer_humanform ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# convergence warning, so use maximal complex random intercepts instead
+model_glmer_humanform2 <- glmer(rank_glmer_humanform ~ robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit")) # singularity warning
+
+# still warning, reduce
+model_glmer_humanform3 <- glmer(rank_glmer_humanform ~ robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# allfit command
+model_allfit_humanform1 <- allFit(model_glmer_humanform1)
+### save summary in new object
+summ_allfit_humanform1 <- summary(model_allfit_humanform1) 
+### look at fixed estimates
+summ_allfit_humanform1$fixef # differences large
+### look at random effect
+summ_allfit_humanform1$sdcor # differences large
+### check log likelihood
+summ_allfit_humanform1$llik # differences large
+### check whether all model ran
+summ_allfit_humanform1$which.OK # all ran 
+# -> Redo with reduced model
+
+# allfit command
+model_allfit_humanform2 <- allFit(model_glmer_humanform2)
+### save summary in new object
+summ_allfit_humanform2 <- summary(model_allfit_humanform2) 
+### look at fixed estimates
+summ_allfit_humanform2$fixef # small differences 
+### look at random effect
+summ_allfit_humanform2$sdcor # small differences
+### check log likelihood
+summ_allfit_humanform2$llik # small differences
+### check whether all model ran
+summ_allfit_humanform2$which.OK # 
+# -> continue with singularity warning of reduced model
+
+summary(model_glmer_humanform2) # significant
+
+# wald CI
+confint(model_glmer_humanform2,parm="beta_",method="Wald")
+```
+
+## Creepy/cute
+```{r}
+model_glmer_creepycute1 <- glmer(rank_glmer_creepycute ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# singularity warning, so use maximal complex random intercepts instead
+model_glmer_creepycute2 <- glmer(rank_glmer_creepycute ~ robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# still warning, reduce
+model_glmer_creepycute3 <- glmer(rank_glmer_creepycute ~ robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# allfit command
+model_allfit_creepy1 <- allFit(model_glmer_creepycute1)
+### save summary in new object
+summ_allfit_creepy1 <- summary(model_allfit_creepy1) 
+### look at fixed estimates
+summ_allfit_creepy1$fixef # differences relatively small
+### look at random effect
+summ_allfit_creepy1$sdcor # differences small
+### check log likelihood
+summ_allfit_creepy1$llik # differences small
+### check whether all model ran
+summ_allfit_creepy1$which.OK # all ran 
+# -> continue with singularity warning
+
+summary(model_glmer_creepycute1) # significant
+
+# wald CI
+confint(model_glmer_creepycute1,parm="beta_",method="Wald")
+```
+
+## Intelligence
+```{r}
+model_glmer_intelligence1 <- glmer(rank_glmer_intelligence ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# singularity warning, so use maximal complex random intercepts instead
+model_glmer_intelligence2 <- glmer(rank_glmer_intelligence ~ robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# still warning, reduce
+model_glmer_intelligence3 <- glmer(rank_glmer_intelligence ~ robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# allfit command
+model_allfit_int1 <- allFit(model_glmer_intelligence1)
+# -> nmkbw doesnt issue warning
+
+# use nmkbw
+model_glmer_intelligence_nmkbw <- glmer(rank_glmer_intelligence ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"), control = glmerControl(optimizer="nmkbw")) # no singularity warning 
+
+summary(model_glmer_intelligence_nmkbw) # not significant
+
+# wald CI
+confint(model_glmer_intelligence_nmkbw,parm="beta_",method="Wald")
+```
+
+## Physical warmth
+```{r}
+model_glmer_physicalwarm1 <- glmer(rank_glmer_physicalwarm ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# singularity warning, so use maximal complex random intercepts instead
+model_glmer_physicalwarm2 <- glmer(rank_glmer_physicalwarm ~ robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# still warning, reduce
+model_glmer_physicalwarm3 <- glmer(rank_glmer_physicalwarm ~ robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# allfit command
+model_allfit_physwarm1 <- allFit(model_glmer_physicalwarm1)
+# -> neldermead doesnt issue warning
+
+# use nelder mead
+model_glmer_physicalwarm_nm <- glmer(rank_glmer_physicalwarm ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"), control = glmerControl(optimizer="Nelder_Mead")) # no singularity warning 
+
+summary(model_glmer_physicalwarm_nm) # not significant
+
+# wald CI
+confint(model_glmer_physicalwarm_nm,parm="beta_",method="Wald")
+```
+
+## Safety
+```{r}
+model_glmer_safety1 <- glmer(rank_glmer_safety ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# singularity warning, so use maximal complex random intercepts instead
+model_glmer_safety2 <- glmer(rank_glmer_safety ~ robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# still warning, reduce
+model_glmer_safety3 <- glmer(rank_glmer_safety ~ robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# allfit command
+model_allfit_safety1 <- allFit(model_glmer_safety1)
+# -> nmkbw doesnt issue warning
+
+# use nmkbw
+model_glmer_safety_nmkbw <- glmer(rank_glmer_safety ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"), control = glmerControl(optimizer="nmkbw")) # no singularity warning 
+
+summary(model_glmer_safety_nmkbw) # not significant
+
+# wald CI
+confint(model_glmer_safety_nmkbw,parm="beta_",method="Wald")
+```
+
+## Social competence
+```{r}
+model_glmer_socialcomp1 <- glmer(rank_glmer_socialcompetence ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+summary(model_glmer_socialcomp1) # not significant
+
+# wald CI
+confint(model_glmer_socialcomp1,parm="beta_",method="Wald")
+```
+
+## Social intelligence
+```{r}
+model_glmer_socialint1 <- glmer(rank_glmer_socialintelligence ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# singularity warning, so use maximal complex random intercepts instead
+model_glmer_socialint2 <- glmer(rank_glmer_socialintelligence ~ robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# still warning, reduce
+model_glmer_socialint3 <- glmer(rank_glmer_socialintelligence ~ robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_survey, family=binomial("logit"))
+
+# allfit command
+model_allfit_socialint1 <- allFit(model_glmer_socialint1)
+### save summary in new object
+summ_allfit_socialint1 <- summary(model_allfit_socialint1) 
+### look at fixed estimates
+summ_allfit_socialint1$fixef # differences relatively small
+### look at random effect
+summ_allfit_socialint1$sdcor # differences small
+### check log likelihood
+summ_allfit_socialint1$llik # differences small
+### check whether all model ran
+summ_allfit_socialint1$which.OK # all ran 
+# continue with singularity warning
+
+summary(model_glmer_socialint1) # not significant
+
+# wald CI
+confint(model_glmer_socialint1,parm="beta_",method="Wald")
+```
+
+## Socialness
+```{r}
+model_glmer_social1 <- glmer(rank_glmer_social ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+summary(model_glmer_social1) # not significant
+
+# wald CI
+confint(model_glmer_social1,parm="beta_",method="Wald")
+```
+
+## Social warmth
+```{r}
+model_glmer_socialwarm1 <- glmer(rank_glmer_socialwarmth ~ robot_type + (1 + robot_type| ParticipantID) + (1| robot), data = df_survey, family=binomial("logit"))
+
+summary(model_glmer_socialwarm1) # not significant
+
+# wald CI
+confint(model_glmer_socialwarm1,parm="beta_",method="Wald")
+```

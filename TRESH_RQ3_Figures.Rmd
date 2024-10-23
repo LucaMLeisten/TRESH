@@ -1,0 +1,205 @@
+---
+title: "TRESH_RQ3_Figures"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    theme: spacelab
+fontsize: 16pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Data
+## Load Packages
+```{r Load Packages, message=TRUE, warning=TRUE}
+# load packages
+install.packages("pacman", repos = "http://cran.us.r-project.org")
+library(pacman)
+p_load(tidyverse, ggridges, ggplot2, patchwork, rstatix, reshape2, ggdist, easystats, ordinal, lme4, apaTables, car, emmeans)
+
+options(scipen=30000)
+```
+
+## Load Data
+```{r Load Data, echo=TRUE}
+# load in datafiles
+df_long_preference_sum <- read.csv("dataframes/df_long_preference_sum.csv", header=TRUE)
+# remove added x column
+df_long_preference_sum <- df_long_preference_sum[-1]
+
+posthoc_preference_df <- read.csv("dataframes/posthoc_preference_df.csv", header=TRUE)
+```
+
+# Figures
+```{r}
+# set theme
+theme_set(theme_light()  + theme(
+    axis.title.x = element_text(size=rel(1.2), color = "black", face = "bold"), 
+    axis.title.y = element_text(size = rel(1.2), color = "black", face = "bold"), 
+    axis.text.x = element_text(size=rel(1), color = "black"),
+    axis.text.y = element_text(size = rel(1), color = "black"), 
+    plot.title = element_text(size = rel(1.2), face = "bold"), 
+    legend.title = element_text(size = rel(1.2), face = "bold"), 
+    legend.text = element_text(size = rel(1)),
+    strip.text = element_text(color="black")
+  ))
+
+colors_preferance=c("#577590",
+                    alpha("#577590", 0.8),
+                    "#809BB3",
+                    alpha("#809BB3",0.8))
+
+colors_plot<-  c(
+  "#99AFC2", 
+   alpha("#99AFC2",0.5),
+  "#eeba0b",
+   alpha("#eeba0b",0.5)
+)
+```
+
+## Raw data
+### Bar plot
+```{r}
+# add interaction column
+df_long_preference_sum$interact <- interaction(df_long_preference_sum$preference, df_long_preference_sum$robot_type, lex.order = FALSE)
+
+preference_plot <- ggplot(df_long_preference_sum, aes(x = factor(rank), y = percentage, fill = factor(interact))) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  geom_errorbar(aes(ymin = percentage - se, ymax = percentage + se),
+                position = position_dodge(width = 0.9), width = 0.25) +
+  labs(x = "Rank", y = "Percentage", fill = "Robot Type") +
+  theme_bw() +
+  scale_fill_manual(values = colors_preferance, labels=c("Hard/Student","Hard/Teacher","Soft/Student", "Soft/Teacher"))+
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+preference_plot
+
+ggsave("Figures/preference_plot.png",preference_plot, width = 10, height = 5, dpi = 800)
+```
+
+### Spider plot
+```{r warning=FALSE}
+# add spacer to create gaps between dimensions
+df_spacer <- data.frame(preference = c("spacer1","spacer2","spacer3"),
+                        robot_type = c(NA,NA,NA),  # NA or some value if needed
+                        percentage = c(NA,NA,NA),
+                        rank=c(NA,NA,NA),
+                        count=c(NA,NA,NA),
+                        total=c(NA,NA,NA),
+                        sd =c(NA,NA,NA),
+                        se=c(NA,NA,NA),
+                        interact=c(NA,NA,NA)
+                        ) # NA or 0 or some value if needed
+
+plot_df <- rbind(df_long_preference_sum, df_spacer)
+df_no_spacers <- plot_df %>%
+  filter(!preference %in% c("spacer1","spacer2","spacer3"))
+
+plot_df$rank <- as.factor(plot_df$rank)
+
+spider_preference <- ggplot((plot_df %>% filter(rank != "0"))) +
+  # Custom grid lines using geom_hline
+  geom_hline(
+    aes(yintercept = y), 
+    data = data.frame(y = c(0, 0.05, 0.10)),  # Inner grid lines only
+    color = "lightgrey", na.rm = TRUE
+  ) + 
+  geom_col(
+    aes(
+      x = fct_relevel(factor(rank),"1","spacer1","2","spacer2","3","spacer3"),
+      y = percentage,
+      color = interact, 
+      fill = interact,
+    ),
+    position = "dodge2",
+    show.legend = TRUE,
+    na.rm = TRUE
+  ) +
+  geom_segment(aes(
+      x = fct_relevel(factor(rank),"1","spacer1","2","spacer2","3","spacer3"),
+      y = 0,
+      xend = fct_relevel(factor(rank),"1","spacer1","2","spacer2","3","spacer3"),
+      yend = 0.18,
+    ),
+    linetype = "dashed",
+    color = "gray12",
+  ) + 
+ coord_radial(rotate_angle = FALSE, expand = FALSE) +
+  scale_y_continuous(
+    limits = c(-0.05, 0.20),  # Set limit just below the outermost circle
+    expand = c(0, 0),    
+    breaks = c(0, 0.05, 0.10)  # Inner grid lines
+  ) +
+  geom_errorbar(aes(x=rank,ymin = percentage - se, ymax = percentage + se, group=interact), position = position_dodge(width = 0.9), width = 0.2)+
+ annotate(
+    x = 0, y = 0.07, 
+    label = "5%", 
+    geom = "text", 
+    color = "gray12",
+    size=rel(5),
+    hjust=0.5,
+    vjust = 0  # Align the label at the bottom of the text box
+  ) +
+  annotate(
+    x = 0, 
+    y = 0.12, 
+    label = "10%", 
+    geom = "text", 
+    color = "gray12",
+    size=rel(5),
+    hjust = 0.5,
+    vjust = 0  # Align the label at the bottom of the text box
+  )+
+  theme(
+     axis.text.y = element_blank(),
+    axis.text.x = element_text(size = rel(1.7)),
+    panel.background = element_blank(),
+    panel.grid.major = element_blank(),  # Remove default grid lines
+    axis.ticks.x = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.x = element_blank(), 
+    axis.title.y = element_blank(),
+    panel.border = element_blank(),
+    strip.background = element_rect(color = "black"),
+ plot.background = element_rect(fill = "white", color = NA)
+  ) + 
+  scale_fill_manual(values = colors_plot,na.translate = FALSE, labels=c("Students/Hard","Students/Soft","Teachers/Hard","Teachers/Soft")) +
+    scale_color_manual(values = colors_plot) +
+  scale_x_discrete(expand = c(0,0),labels=c("1st Rank","2nd Rank","3rd Rank"),na.translate = FALSE) + guides(color=FALSE) +labs(fill="Preference Type")
+
+spider_preference
+
+ggsave("Figures/spider_preference.png",spider_preference, dpi=800, width=10,height=6 )
+```
+
+## Emmeans
+```{r}
+posthoc_preference_plot <- posthoc_preference_df %>%
+  ggplot(aes(x=preference, y=emmean, color=factor(robot_type))) +
+  geom_point( size = 2) +
+  # Add error bars (emmean ± SE)
+  geom_errorbar(aes(ymin = emmean - SE, ymax = emmean + SE), 
+                width = 0.2,  # width of the error bars
+                size = 0.5) + 
+  # Rotate x-axis labels by 45 degrees
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # Add appropriate axis labels
+  labs(x = "Preference", y = "Estimated Marginal Mean", color="Robot Type") + scale_color_manual(
+    values = c("#577590","#809BB3"),  # Example of changing legend colors
+    labels = c("1" = "Hard", "2" = "Soft")  # Example of custom labels
+  ) + scale_x_discrete(labels=c("Student","Teacher"))
+
+posthoc_preference_plot
+
+ggsave("Figures/posthoc_preference_suppl.png",posthoc_preference_plot, dpi=800, width=10,height=6 )
+```
+

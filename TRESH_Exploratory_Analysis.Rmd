@@ -1,0 +1,133 @@
+---
+title: "TRESH_Exploratory_Analysis"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    theme: spacelab
+fontsize: 16pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages
+```{r Load Packages, message=TRUE, warning=TRUE}
+# load packages
+install.packages("pacman", repos = "http://cran.us.r-project.org")
+library(pacman)
+p_load(tidyverse, ggridges, ggplot2, patchwork, rstatix, reshape2, ggdist, easystats, ordinal, lme4, apaTables, car, emmeans)
+
+options(scipen=30000)
+```
+
+## Load Data
+```{r Load Data, echo=TRUE}
+# load in datafiles
+
+df_survey <- read.csv("dataframes/softbots_study1.csv", header=TRUE)
+# remove added x column
+df_survey <- df_survey[-1]
+
+df_long_preference <- read.csv("dataframes/df_long_preference.csv", header=TRUE)
+df_long_preference <- df_long_preference[-1]
+```
+
+## Variable transformation
+```{r}
+# Bring variables into right format
+
+# factors
+df_survey <- df_survey %>%
+  mutate(across(c(ParticipantID, consent, gender, country, teach.school, robot, robot_type, starts_with("rank"),starts_with("suit"),starts_with("favorite"), attentioncheck1, attentioncheck2, source, videos.amount, movies.amount, robots.skepticism), as.factor))
+
+# numeric
+df_survey <- df_survey %>%
+  mutate(across(c(starts_with("prior"), teach.age_1, teach.age_2,teach.age_3,teach.age_4,teach.age_5,teach.age_6,teach.subject_1,teach.subject_2,teach.subject_3,teach.subject_4,teach.subject_5,teach.subject_6,teach.subject_7,teach.subject_8,teach.subject_9,teach.subject_10, Views, Viewssuit, totalviews),as.numeric
+  ))
+```
+
+# Preference by subject
+```{r}
+# turn into long format for subject
+df_long_subject <- tidyr::pivot_longer(df_long_preference, cols = c("teach.subject_1","teach.subject_2","teach.subject_3","teach.subject_4","teach.subject_5","teach.subject_6","teach.subject_7","teach.subject_8","teach.subject_9","teach.subject_10"), names_to = "subject", values_to = "value")
+
+# create new column for subject
+df_long_subject <- df_long_subject %>%
+  mutate(subject_f = dplyr::case_when(subject == "teach.subject_1" & value == "1" ~ "1", 
+                                      subject == "teach.subject_2" & value == "1" ~ "2", 
+                                      subject == "teach.subject_3" & value == "1" ~ "3", 
+                                      subject == "teach.subject_4" & value == "1" ~ "4", 
+                                      subject == "teach.subject_5" & value == "1" ~ "5", 
+                                      subject == "teach.subject_6" & value == "1" ~ "6", 
+                                      subject == "teach.subject_7" & value == "1" ~ "7", 
+                                      subject == "teach.subject_8" & value == "1" ~ "8", 
+                                      subject == "teach.subject_9" & value == "1" ~ "9", 
+                                      subject == "teach.subject_10" & value == "1" ~ "10"
+                                       ))
+
+# remove NA rows of subject column from long dataframe to only keep number of columns per participant of subjects taught
+df_long_subject<- df_long_subject %>% drop_na(subject_f)
+
+# contrasts
+df_long_subject$subject_f <- as.factor(as.character(df_long_subject$subject_f))
+contrasts(df_long_subject$subject_f) <- contr.sum 
+contrasts(df_long_subject$subject_f)
+
+summary(df_long_subject$subject_f)
+df_long_subject$rank <-as.factor(df_long_subject$rank)
+
+# check observations per combinations
+with(df_long_subject, table(robot_type, preference, subject_f))
+```
+
+## CLMM
+```{r}
+model_preference_subject <- clmm(rank ~ robot_type * preference * subject_f+ (1 + robot_type | ParticipantID) + (1|robot), data = df_long_subject)
+
+summary(model_preference_subject) # not significant
+
+# profile CI
+confint(model_preference_subject, level=0.95, type=profile)
+```
+
+# Preference by age
+```{r}
+# turn into long format for subject
+df_long_age <- tidyr::pivot_longer(df_long_preference, cols = c("teach.age_1","teach.age_2","teach.age_3","teach.age_4","teach.age_5"), names_to = "taught_age", values_to = "value")
+
+# create new column for subject
+df_long_age <- df_long_age %>%
+  mutate(age_f = dplyr::case_when(taught_age == "teach.age_1" & value == "1" ~ "1", 
+                                      taught_age == "teach.age_2" & value == "1" ~ "2", 
+                                      taught_age == "teach.age_3" & value == "1" ~ "3", 
+                                      taught_age == "teach.age_4" & value == "1" ~ "4", 
+                                      taught_age == "teach.age_5" & value == "1" ~ "5"
+                                       ))
+
+# remove NA rows of subject column from long dataframe to only keep number of columns per participant of subjects taught
+df_long_age<- df_long_age %>% drop_na(age_f)
+
+df_long_age$age_f <- as.factor(df_long_age$age_f)
+df_long_age$rank <- as.factor(df_long_age$rank)
+df_long_age$preference <- as.factor(df_long_age$preference)
+
+contrasts(df_long_age$age_f) <- contr.sum
+contrasts(df_long_age$preference) <- contr.sum
+```
+
+## CLMM
+```{r}
+# run model
+model_preference_age <- clmm(rank ~ robot_type * preference * age_f+ (1 + robot_type | ParticipantID) + (1|robot), data = df_long_age)
+
+summary(model_preference_age)
+
+# profile CI
+confint(model_preference_age, level=0.95, type=profile)
+```

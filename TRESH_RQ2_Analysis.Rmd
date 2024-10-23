@@ -1,0 +1,498 @@
+---
+title: "TRESH_RQ2_Analysis"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    theme: spacelab
+fontsize: 16pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages
+```{r Load Packages, message=TRUE, warning=TRUE}
+# load packages
+install.packages("pacman", repos = "http://cran.us.r-project.org")
+library(pacman)
+p_load(tidyverse, ggridges, ggplot2, patchwork, rstatix, reshape2, ggdist, easystats, ordinal, lme4, apaTables, car, emmeans)
+
+options(scipen=30000)
+```
+
+## Load Data
+```{r Load Data, echo=TRUE}
+# load in datafiles
+
+df_survey <- read.csv("dataframes/softbots_study1.csv", header=TRUE)
+# remove added x column
+df_survey <- df_survey[-1]
+```
+
+## Variable transformation
+```{r}
+# Bring variables into right format
+
+# factors
+df_survey <- df_survey %>%
+  mutate(across(c(ParticipantID, consent, gender, country, teach.school, robot, robot_type, starts_with("rank"),starts_with("suit"),starts_with("favorite"), attentioncheck1, attentioncheck2, source, videos.amount, movies.amount, robots.skepticism), as.factor))
+
+# numeric
+df_survey <- df_survey %>%
+  mutate(across(c(starts_with("prior"), teach.age_1, teach.age_2,teach.age_3,teach.age_4,teach.age_5,teach.age_6,teach.subject_1,teach.subject_2,teach.subject_3,teach.subject_4,teach.subject_5,teach.subject_6,teach.subject_7,teach.subject_8,teach.subject_9,teach.subject_10, Views, Viewssuit, totalviews),as.numeric
+  ))
+```
+
+```{r}
+# create new df in long format for task suitability ratings
+df_long_suittask <- tidyr::pivot_longer(df_survey, cols = c("suitmath","suitread","suitdifftask","suitart"), names_to = "suittask", values_to = "value")
+
+write.csv(df_long_suittask, "Dataframes/df_long_suittask.csv")
+
+df_long_suitage <- tidyr::pivot_longer(df_survey, cols = c("suitchildren","suitadults","suitageneither"), names_to = "suitage", values_to = "value")
+
+write.csv(df_long_suitage, "Dataframes/df_long_suitage.csv")
+
+df_long_suitgroup <- tidyr::pivot_longer(df_survey, cols = c("suitindividual","suitgroups","suitindivgroupneither"), names_to = "suitgroup", values_to = "value")
+
+write.csv(df_long_suitgroup, "Dataframes/df_long_suitgroup.csv")
+
+df_long_suitrole <- tidyr::pivot_longer(df_survey, cols = c("suitteacher","suittutor","suitpeer","suitnovice"), names_to = "suitrole", values_to = "value")
+
+write.csv(df_long_suitrole, "Dataframes/df_long_suitrole.csv")
+```
+
+# Means
+## Task suitability
+```{r}
+# mean and df by suitability
+df_long_suittask$value_num <- as.numeric(as.character(df_long_suittask$value))
+
+# by task
+df_long_suittask %>%
+  group_by(suittask) %>%
+  dplyr::summarize(n = n(), mean_value = mean(value_num, na.rm = TRUE), sd=sd(value_num, na.rm=TRUE))
+
+# and by robot_type
+df_long_suittask %>%
+  group_by(robot_type, suittask) %>%
+  dplyr::summarize(n = n(), mean_value = mean(value_num, na.rm = TRUE), sd=sd(value_num, na.rm=TRUE))
+```
+
+## Age suitability
+```{r}
+df_long_suitage$value_num <- as.numeric(as.character(df_long_suitage$value))
+
+# overall
+df_long_suitage %>%
+  group_by(suitage) %>%
+  dplyr::summarise( 
+    n=n(),
+    mean=mean(value_num),
+    sd=sd(value_num))
+
+# by robot type
+df_long_suitage_sum <- df_long_suitage %>%
+  group_by(robot_type, suitage) %>%
+  dplyr::summarise( 
+    n=n(),
+    mean=mean(value_num),
+    sd=sd(value_num)
+  ) %>%
+  mutate( se=sd/sqrt(n))
+
+df_long_suitage_sum
+
+write.csv(df_long_suitage_sum, "Dataframes/df_long_suitage_sum.csv")
+```
+
+## Context suitability
+```{r}
+df_long_suitgroup$value_num <- as.numeric(as.character(df_long_suitgroup$value))
+
+# overall
+df_long_suitgroup %>%
+  group_by(suitgroup) %>%
+  dplyr::summarise( 
+    n=n(),
+    mean=mean(value_num),
+    sd=sd(value_num)
+  ) %>%
+  mutate( se=sd/sqrt(n))
+
+# by robot_type
+df_long_suitgroup_sum <- df_long_suitgroup %>%
+  group_by(robot_type, suitgroup) %>%
+  dplyr::summarise( 
+    n=n(),
+    mean=mean(value_num),
+    sd=sd(value_num)
+  ) %>%
+  mutate( se=sd/sqrt(n))
+
+df_long_suitgroup_sum
+
+write.csv(df_long_suitgroup_sum, "Dataframes/df_long_suitgroup_sum.csv")
+```
+
+## Role suitability
+```{r}
+df_long_suitrole$value_num <- as.numeric(as.character(df_long_suitrole$value))
+
+# overall
+df_long_suitrole %>%
+  group_by(suitrole) %>%
+  dplyr::summarise( 
+    n=n(),
+    mean=mean(value_num),
+    sd=sd(value_num))
+    
+# by robot type
+df_long_suitrole_sum <- df_long_suitrole %>%
+  group_by(robot_type, suitrole) %>%
+  dplyr::summarise( 
+    n=n(),
+    mean=mean(value_num),
+    sd=sd(value_num)
+  ) %>%
+  mutate( se=sd/sqrt(n))
+
+df_long_suitrole_sum 
+
+write.csv(df_long_suitrole_sum, "Dataframes/df_long_suitrole_sum.csv")
+```
+
+# LMERs
+## Task suitability
+```{r}
+# set sum to zero contrasts
+contrasts(df_survey$robot_type) <- contr.sum 
+contrasts(df_survey$robot_type)
+```
+
+### Mathematics
+```{r}
+df_survey$suitmath <- as.numeric(as.character(df_survey$suitmath))
+
+# LMER
+model_math <- lmer(suitmath ~ robot_type + (1 + robot_type | ParticipantID) + (1| robot), data = df_survey)
+
+summary(model_math)
+confint(model_math, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_math)
+res_model_math <- residuals(model_math)
+qqPlot(res_model_math)
+```
+
+### Reading
+```{r}
+df_survey$suitread <- as.numeric(as.character(df_survey$suitread))
+
+model_read <- lmer(suitread ~ robot_type + (1 + robot_type | ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_read)
+confint(model_read, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_read)
+res_model_read <- residuals(model_read)
+qqPlot(res_model_read)
+```
+
+### Feeling better
+```{r}
+df_survey$suitdifftask <- as.numeric(as.character(df_survey$suitdifftask))
+
+model_difftask <- lmer(suitdifftask ~ robot_type + (1 + robot_type | ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_difftask)
+confint(model_difftask, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_difftask)
+
+res_model_difftask <- residuals(model_difftask)
+qqPlot(res_model_difftask)
+```
+
+### Art
+```{r}
+df_survey$suitart <- as.numeric(as.character(df_survey$suitart))
+
+model_art <- lmer(suitart ~ robot_type + (1 + robot_type | ParticipantID) + (1| robot), data = df_survey) 
+
+summary(model_art)
+confint(model_art, level = 0.95, method = 'profile')
+
+# model diagnostics
+check_model(model_art)
+
+res_model_art <- residuals(model_art)
+qqPlot(res_model_art)
+```
+
+# GLMERs
+```{r}
+# turn columns into long format
+df_long_suitability <- df_survey %>%
+  pivot_longer(
+    # Select all the columns that contain ratings (suit* columns)
+    cols = c(suitchildren, suitadults, suitageneither, 
+             suitindividual, suitgroups, suitindivgroupneither, 
+             suitteacher, suittutor, suitpeer, suitnovice),
+    
+    # Use regex pattern matching to categorize columns into 'suit_age', 'suit_group', and 'suit_role'
+    names_to = c("suit_category", "suit_type"),
+    names_pattern = "suit(.*)(children|adults|ageneither|individual|groups|indivgroupneither|teacher|tutor|peer|novice)",
+    
+    # This will store the values (0 or 1) in a single 'rating' column
+    values_to = "suit_rating"
+  ) %>%
+  
+  # Create the new columns for 'suit_age', 'suit_group', and 'suit_role' based on pattern matching
+  mutate(
+    suit_age = case_when(
+      suit_type %in% c("children", "adults", "ageneither") ~ suit_type,
+      TRUE ~ NA_character_
+    ),
+    suit_group = case_when(
+      suit_type %in% c("individual", "groups", "indivgroupneither") ~ suit_type,
+      TRUE ~ NA_character_
+    ),
+    suit_role = case_when(
+      suit_type %in% c("teacher", "tutor", "peer", "novice") ~ suit_type,
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  
+  # Drop the intermediate 'suit_category' and 'suit_type' columns
+  select(-suit_category, -suit_type)
+
+# turn to factor
+df_long_suitability$suit_age <- as.factor(df_long_suitability$suit_age)
+df_long_suitability$suit_group <- as.factor(df_long_suitability$suit_group)
+df_long_suitability$suit_role <- as.factor(df_long_suitability$suit_role)
+
+# set contrasts
+contrasts(df_long_suitability$suit_age) <- contr.sum 
+contrasts(df_long_suitability$suit_age)
+
+contrasts(df_long_suitability$suit_group) <- contr.sum 
+contrasts(df_long_suitability$suit_group)
+
+contrasts(df_long_suitability$suit_group) <- contr.sum 
+contrasts(df_long_suitability$suit_role)
+
+contrasts(df_long_suitability$robot_type) <- contr.sum 
+contrasts(df_long_suitability$robot_type)
+```
+
+## Age
+```{r}
+model_suitability_age = glmer(suit_rating ~ suit_age * robot_type + (1 + robot_type | ParticipantID) + (1|robot), family = binomial, data = df_long_suitability)
+
+# convergence warning, so use maximal complex random intercepts instead
+model_suitability_age2 <- glmer(suit_rating ~ suit_age * robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_long_suitability, family=binomial("logit"))
+
+# still warning, reduce
+model_suitability_age3 <- glmer(suit_rating ~ suit_age  * robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_long_suitability, family=binomial("logit")) # runs
+
+summary(model_suitability_age3)
+```
+
+### Contrasts
+```{r}
+# calculate contrasts
+posthoc_age <- emmeans(model_suitability_age3,~robot_type * suit_age,adjust="fdr") # make figure and table of this one
+posthoc_age
+
+# calculate CIs
+confint(posthoc_age)
+
+# contrast between adults for soft / hard robots
+adultshard <- c(1,rep(0,5))
+adultssoft <- c(0,1,rep(0,4))
+
+# contrast between children for soft / hard robots
+childrenhard <- c(0,0,0,0,1,0)
+childrensoft <- c(0,0,0,0,0,1)
+
+neitherhard <- c(0,0,1,rep(0,3))
+neithersoft <- c(0,0,0,1,rep(0,2))
+
+# contrast across age (adults, children, neither) for hard soft -> way to contrast across multiple levels for e.g. age
+adultschildrensoft<- c(0,.5,0,0,0,.5)
+adultschildrenhard<- c(0.5,0,0,0,0.5,0)
+
+# contrasts across robots
+children <- c(0,0,0,0,0.5,0.5)
+adults <- c(0.5,0.5,rep(0,4))
+neither <- c(0,0,0.5,0.5,0,0)
+# contrast across robots
+
+# calculate contrasts,
+contrast(posthoc_age,method=list("adults (hard-soft)"=adultshard-adultssoft,
+                             "children (hard-soft)"=childrenhard-childrensoft,
+                             "neither(hard-soft)" =neitherhard-neithersoft,
+                             "adultschildren(hard-soft)"=adultschildrenhard-adultschildrensoft,
+                             "Childrenvsadults"=children-adults,
+                             "adultsvsneither"=adults-neither,
+                             "childrenvsneither"=children-neither
+                             ), adjust="fdr")
+
+# save as csv
+posthoc_age_df <- posthoc_age %>% as.data.frame()
+write.csv(posthoc_age_df, "Dataframes/posthoc_age_df.csv")
+```
+
+## Context
+```{r}
+model_suitability_group = glmer(suit_rating ~ suit_group * robot_type + (1 + robot_type | ParticipantID) + (1|robot), family = binomial, data = df_long_suitability)
+
+# convergence warning, so use maximal complex random intercepts instead
+model_suitability_group2 <- glmer(suit_rating ~ suit_group * robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_long_suitability, family=binomial("logit"))
+
+# still warning, reduce
+model_suitability_group3 <- glmer(suit_rating ~ suit_group  * robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_long_suitability, family=binomial("logit")) # runs
+
+summary(model_suitability_group3)
+```
+
+### Contrasts
+```{r}
+# calculate contrasts
+posthoc_group <- emmeans(model_suitability_group3,~robot_type * suit_group,adjust="fdr") # make figure and table of this one
+posthoc_group
+
+# calculate CIs
+confint(posthoc_group)
+
+# contrast between adults for soft / hard robots
+groupshard <- c(1,rep(0,5))
+groupssoft <- c(0,1,rep(0,4))
+
+# contrast between children for soft / hard robots
+individualhard <- c(0,0,0,0,1,0)
+individualsoft <- c(0,0,0,0,0,1)
+
+neitherhard <- c(0,0,1,rep(0,3))
+neithersoft <- c(0,0,0,1,rep(0,2))
+
+# contrast across age (adults, children, neither) for hard soft -> way to contrast across multiple levels for e.g. age
+groupsindividualssoft<- c(0,.5,0,0,0,.5)
+groupsindividualshard<- c(0.5,0,0,0,0.5,0)
+
+# contrasts across robots
+individuals <- c(0,0,0,0,0.5,0.5)
+groups <- c(0.5,0.5,rep(0,4))
+neither <- c(0,0,0.5,0.5,0,0)
+# contrast across robots
+
+# calculate contrasts,
+contrast(posthoc_group,method=list("groups (hard-soft)"=groupshard-groupssoft,
+                             "individuals (hard-soft)"=individualhard-individualsoft,
+                             "neither(hard-soft)" =neitherhard-neithersoft,
+                             "groupsindividuals(hard-soft)"=groupsindividualshard-groupsindividualssoft,
+                             "Individualsvsgroups"=individuals-groups,
+                             "groupsvsneither"=groups-neither,
+                             "individualsvsneither"=individuals-neither
+                             ), adjust="fdr")
+
+posthoc_group_df <- posthoc_group %>% as.data.frame()
+write.csv(posthoc_group_df, "Dataframes/posthoc_group_df.csv")
+```
+
+## Roles
+```{r}
+model_suitability_role = glmer(suit_rating ~ suit_role * robot_type + (1 + robot_type | ParticipantID) + (1|robot), family = binomial, data = df_long_suitability)
+
+# singularity warning, so use maximal complex random intercepts instead
+model_suitability_role2 <- glmer(suit_rating ~ suit_role * robot_type + (1 | ParticipantID) + (1 | ParticipantID:robot_type) + (1| robot), data = df_long_suitability, family=binomial("logit"))
+
+# still warning, reduce
+model_suitability_role3 <- glmer(suit_rating ~ suit_role  * robot_type + (1 | ParticipantID:robot_type) + (1| robot), data = df_long_suitability, family=binomial("logit")) 
+
+
+# still warning, use allFit command
+model_allfit1 <- allFit(model_suitability_role) # all issue warnings
+### save summary in new object
+summ_allfit1 <- summary(model_allfit1) 
+### look at fixed estimates
+summ_allfit1$fixef # differences relatively small except for nelder mead
+### look at random effect
+summ_allfit1$sdcor # differences small
+### check log likelihood
+summ_allfit1$llik
+### check whether all model ran
+summ_allfit1$which.OK # all ran
+
+# continue with bobyqa
+model_suitability_role_bobyqa <- glmer(suit_rating ~ suit_role * robot_type + (1 + robot_type | ParticipantID) + (1|robot), family = binomial, data = df_long_suitability, control = glmerControl(optimizer="bobyqa"))
+
+# check whether thats okay
+derivs1 <- model_suitability_role_bobyqa@optinfo$derivs
+sc_grad1 <- with(derivs1,solve(Hessian,gradient))
+max(abs(sc_grad1)) # smaller than <0.001, so okay
+max(pmin(abs(sc_grad1),abs(derivs1$gradient))) # also smaller than .001, so okay
+
+summary(model_suitability_role_bobyqa)
+```
+
+### Contrasts
+```{r}
+# calculate contrasts
+posthoc_role <- emmeans(model_suitability_role_bobyqa,~robot_type * suit_role,adjust="fdr") # make figure and table of this one
+posthoc_role
+
+# calculate CIs
+confint(posthoc_role)
+
+# contrast between adults for soft / hard robots
+novicehard <- c(1,rep(0,7))
+novicesoft <- c(0,1,rep(0,6))
+
+# contrast between children for soft / hard robots
+peerhard <- c(0,0,1,rep(0,5))
+peersoft <- c(0,0,0,1,rep(0,4))
+
+tutorhard <- c(0,0,0,0,0,0,1,0)
+tutorsoft <- c(0,0,0,0,0,0,0,1)
+
+teacherhard <- c(0,0,0,0,1,0,0,0)
+teachersoft <- c(0,0,0,0,0,1,0,0)
+
+# contrast acrossroles for hard soft
+rolesoft<- c(0,0.25,0,0.25,0,0.25,0,0.25)
+rolehard<- c(0.25,0,0.25,0,0.25,0,0.25,0)
+
+# contrasts across robots
+novice <- c(0.5,0.5,rep(0,6))
+peer <- c(0,0,0.5,0.5,rep(0,4))
+tutor <- c(0,0,0,0,0.5,0.5,rep(0,2))
+teacher <- c(0,0,0,0,0,0,0,0)
+
+# calculate contrasts,
+contrast(posthoc_role,method=list("novice (hard-soft)"=novicehard-novicesoft,
+                             "peer (hard-soft)"=peerhard-peersoft,
+                             "tutor(hard-soft)" =tutorhard-tutorsoft,
+                             "teacher(hard-soft)" =teacherhard-teachersoft,
+                             "roles(hard-soft)"=rolehard-rolesoft,
+                             "Novicevspeer"=novice-peer,
+                             "novicevstutor"=novice-tutor,
+                             "novicevsteacher"=novice-teacher,
+                             "peervstutor"=peer-tutor,
+                              "peervsteacher"=peer-teacher,
+                              "tutorvsteacher"=tutor-teacher
+                             ), adjust="fdr")
+
+posthoc_role_df <- posthoc_role %>% as.data.frame()
+write.csv(posthoc_role_df, "Dataframes/posthoc_role_df.csv")
+```

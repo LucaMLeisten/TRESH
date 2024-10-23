@@ -1,0 +1,308 @@
+---
+title: "TRESH_Priorrobotexperience"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    theme: spacelab
+fontsize: 16pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Packages
+```{r Load Packages, message=FALSE, warning=FALSE}
+# load packages
+install.packages("pacman", repos = "http://cran.us.r-project.org")
+library(pacman)
+p_load(tidyverse, ggridges, ggplot2, patchwork, rstatix, reshape2, ggdist)
+```
+
+## Load Data
+```{r Load Data, echo=TRUE}
+# load in datafile
+
+df_survey <- read.csv("dataframes/softbots_study1.csv", header=TRUE)
+# remove added x column
+df_survey <- df_survey[-1]
+
+df_unique <- read.csv("dataframes/df_unique.csv", header=TRUE)
+df_unique <- df_unique[-1]
+
+```
+
+## Variable transformation
+```{r}
+# Bring variables into right format
+
+# factors
+df_survey <- df_survey %>%
+  mutate(across(c(ParticipantID, consent, gender, country, teach.school, robot, robot_type, starts_with("rank"),starts_with("suit"),starts_with("favorite"), attentioncheck1, attentioncheck2, source, videos.amount, movies.amount, robots.skepticism), as.factor))
+
+# numeric
+df_survey <- df_survey %>%
+  mutate(across(c(starts_with("prior"), teach.age_1, teach.age_2,teach.age_3,teach.age_4,teach.age_5,teach.age_6,teach.subject_1,teach.subject_2,teach.subject_3,teach.subject_4,teach.subject_5,teach.subject_6,teach.subject_7,teach.subject_8,teach.subject_9,teach.subject_10, Views, Viewssuit, totalviews),as.numeric
+  ))
+```
+
+# Prior contact to robots
+```{r warning=FALSE}
+# reshape to long
+df_long_contact <- tidyr::pivot_longer(df_unique, 
+                                       cols = starts_with("priorcontact."), 
+                                       names_to = "robot_class", 
+                                       values_to = "counts")
+# remove NAs
+df_long_contact <- df_long_contact[!is.na(df_long_contact$counts),]
+
+# calculate number of participants per robot class
+total_participants <- df_long_contact %>%
+  group_by(robot_class) %>%
+  dplyr::summarise(total = n_distinct(ParticipantID))
+
+# Calculate the counts of yes and no responses for each robot type
+response_counts <- df_long_contact %>%
+  group_by(robot_class, counts) %>%
+  dplyr::summarise(count = n()) %>%
+  left_join(total_participants, by = "robot_class") %>%
+  mutate(percentage = (count / total) * 100)
+
+response_counts 
+```
+
+# Amount of contact to robots
+```{r}
+# reshape to long
+df_amountrobotsseen <- pivot_longer(df_unique, cols = starts_with("priorcontactamount"), names_to = "robot_class", values_to = "ratings")
+
+# filter out NAs
+df_amountrobotsseen <- df_amountrobotsseen[complete.cases(df_amountrobotsseen$ratings), ]
+
+# calculate overall mean
+df_amountrobotsseen_overall <- df_amountrobotsseen %>%
+  dplyr::summarise( 
+    n=n(),
+    mean=mean(ratings),
+    sd=sd(ratings)
+  ) %>%
+  mutate( se=sd/sqrt(n))
+
+df_amountrobotsseen_overall
+
+# means by robot type
+df_amountrobotsseen_robottype <- df_amountrobotsseen %>%
+  group_by(robot_class) %>%
+  dplyr::summarise( 
+    n=n(),
+    mean=mean(ratings),
+    sd=sd(ratings)
+  ) %>%
+  mutate( se=sd/sqrt(n))
+
+df_amountrobotsseen_robottype
+```
+
+# Skepticism towards robots
+```{r}
+# calculate mean
+df_unique %>%
+  get_summary_stats(robots.skepticism, type = "mean_sd")
+
+# split skepticism by participants that had prior contact with robots vs none prior contact
+# create column with prior contact yes/no
+df_unique <- df_unique %>%
+  mutate(prior_contact = dplyr::case_when(
+                                        priorcontact.domestrobot == "1"  |  priorcontact.industrobot == "1" | priorcontact.otherrobot == "1" |  priorcontact.socialrobot == "1" ~ "1", 
+                                       priorcontact.domestrobot == "0"  & priorcontact.industrobot == "0" & priorcontact.otherrobot == "0" &  priorcontact.socialrobot == "0" ~ "0"
+                                       ))
+
+# turn to factor
+df_unique$prior_contact <- as.factor(as.character(df_unique$prior_contact))
+
+# print participant with no prior contact
+summary(df_unique$prior_contact)
+
+# same for prior contact only with social robots
+# create column with prior contact yes/no
+df_unique <- df_unique %>%
+  mutate(prior_contact_socialrobot = dplyr::case_when(
+                                        priorcontact.socialrobot == "1" ~ "1", 
+                                       priorcontact.socialrobot == "0" ~ "0"
+                                       ))
+# turn to factor
+df_unique$prior_contact_socialrobot <- as.factor(as.character(df_unique$prior_contact_socialrobot))
+
+# print participant without prior contact to social robots
+summary(df_unique$prior_contact_socialrobot)
+
+# create df without NAs
+filtered_df_social <- df_unique %>% filter(!is.na(prior_contact_socialrobot))
+
+# calculate skepticism means by prior contact 
+filtered_df_social %>%
+  group_by(prior_contact_socialrobot) %>%
+  get_summary_stats(robots.skepticism, type = "mean_sd")
+
+# t-test for significant differences in skepticms between groups
+t.test(robots.skepticism ~ prior_contact_socialrobot, filtered_df_social)
+```
+
+# Movies and videos with robots
+```{r}
+# count how many movies with robots
+df_unique %>%
+  get_summary_stats(movies_seen, type = "mean_sd")
+
+# turn into long format
+df_long_videos <- gather(df_unique, variable, value, c(videos.amount, movies.amount))
+
+# mean and sd of videos seen
+df_long_videos %>%
+  group_by(variable) %>%
+  dplyr::summarize(mean_value = mean(value, na.rm = TRUE),
+                   sd_value = sd(value, na.rm = TRUE))
+```
+# GAToRS
+```{r}
+# calculate means
+df_unique %>% dplyr::summarise(across(c(gators_pn, gators_pp, gators_sn, gators_sp), 
+                   list(mean = ~ mean(.), sd = ~ sd(.)), 
+                   .names = "{col}_{fn}"))
+
+# create long df with gators means
+df_gators_long <- melt(df_unique, measure.vars = c("gators_pp", "gators_pn", "gators_sp", "gators_sn"))
+
+# add column for positive / negative and societal/personal for plotting
+df_gators_long <- df_gators_long %>%
+  mutate(level = dplyr::case_when(
+                                       variable == "gators_pp" | variable == "gators_pn"~ "Personal",
+                                       variable== "gators_sp" | variable == "gators_sn" ~ "Societal"))
+
+df_gators_long <- df_gators_long %>%
+  mutate(magnitude = dplyr::case_when(
+                                       variable == "gators_pp" | variable == "gators_sp"~ "Positive",
+                                       variable== "gators_pn"| variable == "gators_sn" ~ "Negative"))
+
+```
+
+# Figures
+```{r}
+# set theme
+theme_set(theme_light()  + theme(
+    axis.title.x = element_text(size=rel(1.5), color = "black", face = "bold"), 
+    axis.title.y = element_text(size = rel(1.5), color = "black", face = "bold"), 
+    axis.text.x = element_text(size=rel(1.3), color = "black"),
+    axis.text.y = element_text(size = rel(1.3), color = "black"), 
+    plot.title = element_text(size = rel(1.5), face = "bold"), 
+    legend.title = element_text(size = rel(1.5), face = "bold"), 
+    legend.text = element_text(size = rel(1.3)),
+    strip.text = element_text(color="black")
+  ))
+```
+
+## Prior contact to robots
+```{r warning=FALSE}
+robotsseen_plot <- ggplot(response_counts %>% filter(counts == 1), aes(x = robot_class, y = percentage, fill =robot_class, color =robot_class)) +
+  geom_bar(stat = "identity", position = "dodge", alpha=0.8, width=0.5) +
+  labs(x = "Robot type", y = "Percentage") +
+  scale_fill_manual(values = c("#f94144","#f3722c","#577590","#277da1"))+
+    scale_color_manual(values = c("#f94144","#f3722c","#577590","#277da1"))+
+  ggtitle("A", subtitle = "Participants with prior contact \nto robots") + 
+  scale_x_discrete(labels = c("Domestic","Industrial","Other","Social")) + coord_flip() +
+  theme(legend.position = c(0.85, 0.85), legend.background = element_rect(
+                                  size=0.2, linetype="solid", 
+                                  colour ="grey"), legend.title = element_text(size = rel(0.6)), legend.text = element_text(size=rel(0.6)))+
+  guides(fill =FALSE, color=FALSE)
+
+robotsseen_plot
+```
+
+## Amount of previous contact
+```{r message=FALSE, warning=FALSE}
+robotsseenamount_plot <- ggplot(df_amountrobotsseen, aes(x = ratings, y = robot_class, fill = robot_class, color=robot_class)) + 
+  geom_vline(xintercept= 3, linetype = "dashed", color = "darkgrey")+
+  geom_density_ridges(scale = 0.6, alpha = 0.7, rel_min_height = 0.05) +
+  stat_pointinterval(position = position_dodge(.4, preserve = "single"), scale=0.6, alpha=0.7) +
+  labs(y="Robot Type",x="Frequency") +
+  scale_fill_manual(values=c("#f94144","#f3722c","#577590","#277da1")) +
+  scale_color_manual(values=c("#f94144","#f3722c","#577590","#277da1"))  + 
+  guides(fill=FALSE, colour = FALSE)+ 
+  scale_y_discrete(labels = c("Domestic","Industrial","Other","Social")) +
+  scale_x_continuous(limits = c(1,5),breaks=c(1,2,3,4,5), labels = c("Very","Somewhat","Neither","Somewhat","Very")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.title.y = element_blank(),axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
+    annotate("text", x=c(2.5,3.4), y = c(0.6,0.6), label=c("Rarely", "Often"), size=rel(3))
+
+robotsseenamount_plot
+```
+
+## Skepticism towards robots
+```{r message=FALSE}
+plot_priorcontact_skepticsm <- ggplot(filtered_df_social, aes(x = robots.skepticism, y = prior_contact_socialrobot, fill = prior_contact_socialrobot, color=prior_contact_socialrobot)) + 
+    geom_vline(xintercept= 3, linetype = "dashed", color = "darkgrey")+
+ geom_density_ridges(scale = 0.5, alpha = 0.7, rel_min_height = 0.05) +
+  stat_pointinterval(position = position_dodge(.4, preserve = "single"), scale=0.6, alpha=0.7) +
+  labs(y="Prior contact",x="Rating") +
+  scale_fill_manual(values=c("#384F59","#277da1")) + 
+  scale_color_manual(values=c("#384F59","#277da1")) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
+  ggtitle("B", subtitle = "Skepticism towards social \nrobots")+ 
+guides(fill=FALSE, colour = FALSE) + 
+  scale_x_continuous(limits=c(1,5),breaks=c(1,2,3,4,5),labels = c("Very","Somewhat","Neither","Somewhat","Very")) + 
+  scale_y_discrete(labels=c("No contact","Prior contact"))+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    annotate("text", x=c(2.4,3.5), y = c(0.51,0.51), label=c("Skeptical", "Excited"), size=rel(3))
+
+plot_priorcontact_skepticsm
+```
+
+## Movies and videos
+```{r message=FALSE}
+videos_plot <- ggplot(df_long_videos, aes(x = value, y = variable, fill = variable, color=variable)) + 
+  geom_vline(xintercept= 3, linetype = "dashed", color = "darkgrey")+
+  geom_density_ridges(scale = 0.5, alpha = 0.7, rel_min_height = 0.05) +
+  stat_pointinterval(position = position_dodge(.4, preserve = "single"), scale=0.6, alpha=0.7) +
+  labs(y = "Content", x = "Frequency") +  
+ scale_fill_manual(values=c("#f9c74f","#4d908e")) +
+  scale_color_manual(values=c("#f9c74f","#4d908e")) +  
+  ggtitle("C", subtitle = "Seen content featuring robots")+ 
+  guides(fill=FALSE, colour = FALSE) +
+  scale_y_discrete(labels = c("Movies","Videos"))  +
+  scale_x_continuous(limits = c(1,5),breaks=c(1,2,3,4,5),labels = c("Very","Somewhat","Neither","Somewhat","Very")) +
+    annotate("text", x=c(2.5,3.4), y = c(0.6,0.6), label=c("Rarely", "Often"), size=rel(3)) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+videos_plot
+```
+
+## GAToRS
+```{r message=FALSE, warning=FALSE}
+gators_plot <- ggplot(df_gators_long, aes(x = value, y = factor(level), fill = factor(magnitude), color=factor(magnitude))) +
+ geom_density_ridges(scale = 0.5, alpha = 0.7, rel_min_height = 0.06) +
+  stat_pointinterval(position = position_dodge(.4, preserve = "single"), scale=0.6, alpha=0.7) +
+  labs(y="Level",x="Score", fill ="Magnitude") +
+  scale_fill_manual(values=c("#f8961e","#8ABB63")) + 
+  scale_color_manual(values=c("#f8961e","#8ABB63")) + 
+  ggtitle("D", subtitle = "GAToRS Scale")+ 
+  scale_x_continuous(limits=c(1,5),breaks=c(1,2,3,4,5,6,7)) +
+  theme(legend.position = c(0.15, 0.85), legend.background = element_rect(
+                                  size=0.2, linetype="solid", 
+                                  colour ="grey"), legend.title = element_text(size = rel(0.6)), legend.text = element_text(size=rel(0.6)))+
+  guides(fill =guide_legend(title.position="top", title.hjust = 0.5, reverse = TRUE), color =FALSE)
+
+gators_plot
+```
+
+### Combined plot
+```{r message=FALSE, warning=FALSE}
+combined_plot <- ((robotsseen_plot + robotsseenamount_plot + plot_priorcontact_skepticsm) / (videos_plot + gators_plot)) + plot_layout(widths=c(1,1,2), heights = c(1,1.5))
+
+# save the combined plot
+ggsave("Figures/figure_priorexperience.png", plot= combined_plot, dpi = 800, width = 8.7, height = 8)
+
+```
+

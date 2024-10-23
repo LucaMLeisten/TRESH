@@ -1,0 +1,226 @@
+---
+title: "TRESH_Demographics"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    theme: spacelab
+fontsize: 16pt
+---
+# Preparation
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Load Packages
+```{r Load Packages, message=FALSE, warning=FALSE}
+# load packages
+install.packages("pacman", repos = "http://cran.us.r-project.org")
+library(pacman)
+p_load(rstatix,ggthemes,ggplot2,tidyverse,tidyselect,patchwork, visdat)
+```
+## Load Data
+```{r Load Data, echo=TRUE}
+# load in datafile
+
+df_survey <- read.csv("dataframes/softbots_study1.csv", header=TRUE)
+
+# remove added x column
+df_survey <- df_survey[-1]
+
+str(df_survey)
+```
+## Variable transformation
+```{r}
+# Bring variables into right format
+
+# factors
+df_survey <- df_survey %>%
+  mutate(across(c(ParticipantID, consent, gender, country, teach.school, robot, robot_type, starts_with("rank"),starts_with("suit"),starts_with("favorite"), attentioncheck1, attentioncheck2, source, videos.amount, movies.amount, robots.skepticism), as.factor))
+
+# numeric
+df_survey <- df_survey %>%
+  mutate(across(c(starts_with("prior"), teach.age_1, teach.age_2,teach.age_3,teach.age_4,teach.age_5,teach.age_6,teach.subject_1,teach.subject_2,teach.subject_3,teach.subject_4,teach.subject_5,teach.subject_6,teach.subject_7,teach.subject_8,teach.subject_9,teach.subject_10, Views, Viewssuit, totalviews),as.numeric
+  ))
+```
+
+## Missing Values
+```{r}
+# check missing values
+vis_miss(df_survey)
+```
+
+
+# Demographics
+```{r}
+# create df with unique IDS
+df_unique <- df_survey[!duplicated(df_survey$ParticipantID), ]
+
+# save csv
+write.csv(df_unique, file="Dataframes/df_unique.csv")
+
+# gender
+summary(df_unique$gender)
+
+# age
+df_unique %>%
+  get_summary_stats(age, type = "mean_sd")
+
+# schooltype
+summary(df_unique$teach.school) 
+## check other types
+df_unique$teach.school_5_TEXT
+
+# source
+summary(df_unique$source)
+
+# country
+summary(df_unique$country)
+```
+
+## Figures
+```{r}
+# set theme
+
+colors_plot <- c("#f94144","#f3722c","#577590","#b2b260", "#e27396","#277da1","#F4A02A","#9CC4D3", "#FF9389","#8ABB63","#ff69b4" ,  "#ffdb58")
+
+colors_plot2 <- c("#ffa06d","#ffa07a","#5f9ea0","#ea8c55","#ff6f61","#FF9389","#ff8c49","#ffdb58","#daa520", "#ff69b4","#8a9a5b", "#D7885B","#b0e0e6","#e27396","#ffad86","#b2b260")
+
+theme_set(theme_light()  + theme(
+    axis.title.x = element_text(size=rel(1.2), color = "black", face = "bold"), 
+    axis.title.y = element_text(size = rel(1.2), color = "black", face = "bold"), 
+    axis.text.x = element_text(size=rel(1), color = "black"),
+    axis.text.y = element_text(size = rel(1), color = "black"), 
+    plot.title = element_text(size = rel(1.2), face = "bold"), 
+    legend.title = element_text(size = rel(1.2), face = "bold"), 
+    legend.text = element_text(size = rel(1)),
+    strip.text = element_text(color="black")
+  ))
+```
+
+### Taught subjects
+```{r}
+# plot subjects across participants
+subject_counts <- data.frame(subject = paste0("teach.subject_", 1:10), count = colSums(df_unique[paste0("teach.subject_", 1:10)]))
+
+# Plot the counts
+subjects_plot <- ggplot(subject_counts, aes(x = subject, y = count, fill=subject,color=subject)) +
+  geom_bar(stat = "identity",alpha=0.8, width=0.8) +
+  labs(title = "Number of Times Each Subject is Taught",
+       x = "Subject",
+       y = "Count") +
+  scale_fill_manual(values = colors_plot)+scale_color_manual(values = colors_plot)+ 
+  theme(legend.position="none", axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("A") + 
+  scale_x_discrete(labels = c("Languages","Mathematics","Natural sciences","Social sciences & humanities","Music, art & design","PE & health","Home economics","Career guidance","Computer science","Other")) +scale_y_continuous(breaks=c(0,20,40,60), limits=c(0,60))
+
+subjects_plot
+```
+
+### Students' age
+```{r}
+# students age
+
+# plot age across participants
+studentage_counts <- data.frame(age = paste0("teach.age_", 1:6), count = colSums(df_unique[paste0("teach.age_", 1:6)]))
+
+# Plot the counts
+studentsage_plot <- ggplot(studentage_counts, aes(x = age, y = count, fill=age, color=age)) +
+  geom_bar(stat = "identity",  alpha=0.8, width=0.5) +
+  labs(
+       x = "Pupil's Age",
+       y = "Count") +
+scale_fill_manual(values = colors_plot)+scale_color_manual(values = colors_plot) + theme(legend.position="none",  axis.text.x = element_text(angle = 45, hjust = 1),axis.title.y=element_blank(),axis.ticks.y = element_blank(), axis.text.y = element_blank())+
+  scale_x_discrete(labels = c("3-5","6-8","9-11","12-14","15-18","Other"))
+
+studentsage_plot
+```
+
+# Control measures
+## Attention checks
+```{r}
+# check nr. passed
+summary(df_unique$attentioncheck1) 
+summary(df_unique$attentioncheck2)
+```
+
+## Views per robot
+### Means and SDs
+```{r}
+df_survey %>%
+  get_summary_stats(totalviews, type = "mean_sd")
+
+# mean views per robot
+mean_views<- df_survey %>%
+  group_by(robot) %>%
+  dplyr::summarise( 
+    n=n(),
+    mean=mean(as.numeric(totalviews), na.rm=TRUE),
+    sd=sd(as.numeric(totalviews), na.rm=TRUE)
+  ) %>%
+  mutate(se=sd/sqrt(n))
+```
+
+### ANOVA
+```{r}
+anova_videos <- aov(totalviews ~ robot, data = df_survey)
+
+summary(anova_videos)
+
+# Tukey's HSD 
+tukey_result <- TukeyHSD(anova_videos)
+
+print(tukey_result)
+```
+ 
+
+### Figure
+```{r}
+# plot total views per robot
+views_plot <- ggplot(mean_views, aes(x = robot, y = mean, fill=robot, color=robot)) +
+  geom_bar(stat = "identity", width = 0.5,alpha=0.8) + geom_errorbar(aes(ymin = mean - se, ymax = mean + se), position = position_dodge(width = 0.9), width = 0.2, color="black")+
+  labs(x = "Robot", y = "Mean Views", title = "Mean Views per Robot")+ 
+  scale_fill_manual(values = colors_plot2)+
+  scale_color_manual(values = colors_plot2)+  
+  theme(legend.position="none", axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("B") + 
+  scale_x_discrete(labels = c("Baxter","Blossom","Cozmo","Huggable","Keepon","Miro","Moxie","Nao","Paro","Pepper","Tega","Tofu"))
+
+views_plot
+```
+
+# Prior experience with robots
+```{r}
+# reshape to long
+df_long_contact <- tidyr::pivot_longer(df_unique, 
+                                       cols = starts_with("priorcontact."), 
+                                       names_to = "robot_class", 
+                                       values_to = "counts")
+# remove NAs
+df_long_contact <- df_long_contact[!is.na(df_long_contact$counts),]
+
+# in percentage
+total_participants <- df_long_contact %>%
+  group_by(robot_class) %>%
+  dplyr::summarise(total = n_distinct(ParticipantID))
+
+# Calculate the counts of yes and no responses for each robot type
+response_counts <- df_long_contact %>%
+  group_by(robot_class, counts) %>%
+  dplyr::summarise(count = n()) %>%
+  left_join(total_participants, by = "robot_class") %>%
+  mutate(percentage = (count / total) * 100)
+
+```
+
+# Publication Figures
+```{r}
+# save plots in object
+demographics_supplement <- (subjects_plot|studentsage_plot | views_plot)
+
+# save plot
+ggsave("Figures/figure_demographics_supp.png",demographics_supplement,width=10,height=5,dpi=800)
+```

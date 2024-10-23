@@ -1,0 +1,147 @@
+---
+title: "TRESH_RQ3_Analysis"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: yes
+      smooth_scroll: yes
+    theme: spacelab
+fontsize: 16pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Data
+## Load Packages
+```{r Load Packages, message=TRUE, warning=TRUE}
+# load packages
+install.packages("pacman", repos = "http://cran.us.r-project.org")
+library(pacman)
+p_load(tidyverse, ggridges, ggplot2, patchwork, rstatix, reshape2, ggdist, easystats, ordinal, lme4, apaTables, car, emmeans)
+
+options(scipen=30000)
+```
+
+## Load Data
+```{r Load Data, echo=TRUE}
+# load in datafiles
+
+df_survey <- read.csv("dataframes/softbots_study1.csv", header=TRUE)
+# remove added x column
+df_survey <- df_survey[-1]
+```
+
+## Variable transformation
+```{r}
+# Bring variables into right format
+
+# factors
+df_survey <- df_survey %>%
+  mutate(across(c(ParticipantID, consent, gender, country, teach.school, robot, robot_type, starts_with("rank"),starts_with("suit"),starts_with("favorite"), attentioncheck1, attentioncheck2, source, videos.amount, movies.amount, robots.skepticism), as.factor))
+
+# numeric
+df_survey <- df_survey %>%
+  mutate(across(c(starts_with("prior"), teach.age_1, teach.age_2,teach.age_3,teach.age_4,teach.age_5,teach.age_6,teach.subject_1,teach.subject_2,teach.subject_3,teach.subject_4,teach.subject_5,teach.subject_6,teach.subject_7,teach.subject_8,teach.subject_9,teach.subject_10, Views, Viewssuit, totalviews),as.numeric
+  ))
+```
+
+```{r}
+# recode preference variable
+
+df_survey <- df_survey %>%
+  mutate(preference_teacher = dplyr::case_when(
+                                        favoriteteacher1st == "1" ~ "1", 
+                                        favoriteteacher2nd == "1" ~ "2",
+                                        favoriteteacher3rd == "1" ~ "3",
+                                        favoriteteacher1st == "0" & favoriteteacher2nd == "0" & favoriteteacher3rd == "0" ~ "0"
+                                       ))
+
+df_survey <- df_survey %>%
+  mutate(preference_student = dplyr::case_when(
+                                        favoritestudent1st == "1" ~ "1", 
+                                        favoritestudent2nd == "1" ~ "2",
+                                        favoritestudent3rd == "1" ~ "3",
+                                        favoritestudent1st == "0" & favoritestudent2nd == "0" & favoritestudent3rd == "0" ~ "0"
+                                       ))
+
+# create long df
+df_long_preference <- tidyr::pivot_longer(df_survey, cols = c("preference_teacher","preference_student"), names_to = "preference", values_to = "rank")
+
+# save as csv
+write.csv(df_long_preference, "Dataframes/df_long_preference.csv")
+
+# turn variables into factors
+df_long_preference$rank <- as.factor(as.character(df_long_preference$rank))
+df_long_preference$preference <- as.factor(df_long_preference$preference)
+```
+
+# Means
+```{r}
+df_long_preference$rank_num <- as.numeric(as.character(df_long_preference$rank))
+
+df_long_preference_sum <- df_long_preference %>%
+  group_by(rank, robot_type, preference) %>%
+  dplyr::summarise(count = n()) %>%
+  ungroup()
+
+# by robot
+df_long_preference_sum <- df_long_preference_sum %>%
+  group_by(robot_type, preference) %>%
+  mutate(
+    total = sum(count),
+    percentage = (count / total),
+    sd = sd(count/total),
+  ) %>%
+  mutate( se=sd/sqrt(total))
+
+df_long_preference_sum
+
+# save as csv
+write.csv(df_long_preference_sum, "Dataframes/df_long_preference_sum.csv")
+```
+
+# CLMM
+```{r}
+# Set contrasts
+contrasts(df_long_preference$preference) <- contr.sum 
+contrasts(df_long_preference$preference)
+```
+
+```{r}
+# run model
+model_preference <- clmm(rank ~ robot_type * preference + (1 + robot_type | ParticipantID) + (1|robot), data = df_long_preference) 
+
+summary(model_preference) 
+
+# profile CI
+confint(model_preference, level=0.95, type=profile)
+```
+
+## Contrasts
+```{r}
+posthoc_preference <- emmeans(model_preference, ~robot_type * preference,adjust="fdr")
+posthoc_preference
+
+confint(posthoc_preference)
+
+# contrast  for soft / hard robots
+studenthard <- c(1,rep(0,3))
+studentsoft <- c(0,1,rep(0,2))
+
+teacherhard <- c(0,0,1,0)
+teachersoft <- c(0,0,0,1)
+
+# calculate contrasts,
+contrast(posthoc_preference,method=list("students (hard-soft)"=studenthard-studentsoft,
+                             "teachers (hard-soft)"=teacherhard-teachersoft
+                             ), adjust="fdr")
+
+# save as csv
+posthoc_preference_df <- posthoc_preference %>% as.data.frame()
+write.csv(posthoc_preference_df, "Dataframes/posthoc_preference_df.csv")
+```
+
